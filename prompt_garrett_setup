@@ -70,21 +70,6 @@ pmodload 'helper'
   # fi
 # }
 
-# Truncate the PWD display, if needed.
-function prompt_garrett_pwd {
-  local pwd="${PWD/#$HOME/~}"
-
-  # PWD will fit.
-  if [[ "$pwd" == (#m)[/~] ]]; then
-    prompt_garrett_current_dir="${prompt_garrett_color_pwd}$MATCH"
-    unset MATCH
-
-  # PWD needs truncation.
-  else
-    prompt_garrett_current_dir="${prompt_garrett_color_pwd}${${${(@j:/:M)${(@s:/:)pwd}##.#?}:h}%/}/${pwd:t}"
-  fi
-}
-
 # Notify of command completion after n seconds has passed.
 function prompt_garrett_precmd_notification {
 
@@ -108,17 +93,19 @@ function prompt_garrett_precmd_notification {
 
       # On OS X, notify with terminal-notifier.
       if [[ "$OSTYPE" == darwin* ]] && (( $+commands[terminal-notifier] )); then
-        terminal-notifier \
-          -title "${prompt_garrett_preexec_cmd:-Unknown command}" \
-          -message "Required $prompt_garrett_precmd_time_elapsed s" \
-          -sound Tink
 
-      # On OS X, notify with growlnotify.
-      elif [[ "$OSTYPE" == darwin* ]] && (( $+commands[growlnotify] )); then
-        growlnotify \
-          -n "Terminal" \
-          -t "${prompt_garrett_preexec_cmd:-Unknown command}" \
-          -m "Required $prompt_garrett_precmd_time_elapsed s"
+        # Wrap with reattach-to-usernamespace to allow to work in TMUX.
+        if (( $+commands[reattach-to-user-namespace] )); then
+          reattach-to-user-namespace -l terminal-notifier \
+            -title "${prompt_garrett_preexec_cmd:-Unknown command}" \
+            -message "Required $prompt_garrett_precmd_time_elapsed s" \
+            -sound Tink
+        else
+          terminal-notifier \
+            -title "${prompt_garrett_preexec_cmd:-Unknown command}" \
+            -message "Required $prompt_garrett_precmd_time_elapsed s" \
+            -sound Tink
+        fi
 
       # On linux, notify with notify-send.
       elif [[ "$OSTYPE" == linux-gnu ]] && (( $+commands[notify-send] )); then
@@ -187,7 +174,7 @@ function prompt_garrett_precmd {
   prompt_garrett_number_jobs="%(1j.${prompt_garrett_color_prompt}J:${cyan}%j .)"
 
   # Format PWD.
-  prompt_garrett_pwd
+  prompt_garrett_pwd="${prompt_garrett_color_pwd}$(prompt-pwd)"
 
   # Trigger a notification after x time has elapsed.
   eval prompt_garrett_precmd_notification
@@ -214,7 +201,7 @@ function prompt_garrett_preprompt_render() {
 
   # Determine the length needed for prompt_garrett_space.
   # NOTE: Be sure not to include the ${(e)prompt_garrett_space} portion or it won't work.
-  local prompt_line1="${prompt_garrett_upper_left_corner}( ${prompt_garrett_current_dir}${git_info[remote_status]}${git_info[prompt_info]}${git_info[local_status]}${git_info[sha]} )( ${ruby_info[version]}${prompt_garrett_location} )${prompt_garrett_upper_right_corner}"
+  local prompt_line1="${prompt_garrett_upper_left_corner}( ${prompt_garrett_pwd}${git_info[remote_status]}${git_info[prompt_info]}${git_info[local_status]}${git_info[sha]} )( ${ruby_info[version]}${prompt_garrett_location} )${prompt_garrett_upper_right_corner}"
   local zero='%([BSUbfksu]|([FB]|){*})'
   local prompt_garrett_width_line1=${#${(S%%)prompt_line1//$~zero/}}
 
@@ -227,7 +214,7 @@ function prompt_garrett_preprompt_render() {
   eval prompt_garrett_space="${prompt_garrett_color_prompt}\${(l.${prompt_garrett_space_padding}..${prompt_space_character}.)}"
 
   # Newline + Prompt line 1 (set above PROMPT, below).
-  print -P '\n${prompt_garrett_altchar_enable}${prompt_garrett_color_prompt}${prompt_garrett_upper_left_corner}( ${prompt_garrett_current_dir}${git_info[remote_status]}${git_info[prompt_info]}${git_info[local_status]}${git_info[sha]} ${prompt_garrett_color_prompt})${prompt_garrett_altchar_enter}${(e)prompt_garrett_space}${prompt_garrett_altchar_leave}( ${ruby_info[version]}${prompt_garrett_location}${prompt_garrett_color_prompt} )${prompt_garrett_upper_right_corner}'
+  print -P '\n${prompt_garrett_altchar_enable}${prompt_garrett_color_prompt}${prompt_garrett_upper_left_corner}( ${prompt_garrett_pwd}${git_info[remote_status]}${git_info[prompt_info]}${git_info[local_status]}${git_info[sha]} ${prompt_garrett_color_prompt})${prompt_garrett_altchar_enter}${(e)prompt_garrett_space}${prompt_garrett_altchar_leave}( ${ruby_info[version]}${prompt_garrett_location}${prompt_garrett_color_prompt} )${prompt_garrett_upper_right_corner}'
 }
 
 # Configure the prompt.
@@ -236,7 +223,7 @@ function prompt_garrett_setup {
   # Load necessary modules.
   setopt LOCAL_OPTIONS
   unsetopt XTRACE KSH_ARRAYS
-  prompt_opts=(cr percent subst)
+  prompt_opts=(cr percent sp subst)
 
   # Add hooks for calling preexec, precmd & chpwd.
   autoload -Uz add-zsh-hook
@@ -250,7 +237,7 @@ function prompt_garrett_setup {
 
   # Alias the colors.
   [[ -z $(functions colors) ]] && autoload -U colors && colors
-  for color in black red green yellow blue magenta cyan white grey; do
+  for color in red green yellow blue magenta cyan white grey; do
 
     # Normal colors.
     eval $color='%F{${(L)color}}'
@@ -262,11 +249,11 @@ function prompt_garrett_setup {
   # Color scheme.
   eval prompt_garrett_color_pwd=\$\{${2:-'${blue}'}\}
   # eval prompt_garrett_color_pwd=${2:-'${blue}'}
-  eval prompt_garrett_color_line_number=${5:-'${magenta}'}
-  eval prompt_garrett_color_time=${6:-'${green}'}
-  eval prompt_garrett_color_git_branch=${7:-'${green}'}
-  eval prompt_garrett_color_git_sha=${8:-'${yellow}'}
-  eval prompt_garrett_color_ruby_version=${8:-'${yellow}'}
+  # eval prompt_garrett_color_line_number=${5:-'${magenta}'}
+  # eval prompt_garrett_color_time=${6:-'${green}'}
+  # eval prompt_garrett_color_git_branch=${7:-'${green}'}
+  # eval prompt_garrett_color_git_sha=${8:-'${yellow}'}
+  # eval prompt_garrett_color_ruby_version=${8:-'${yellow}'}
 
   # Override the default clear-screen so that ^L displays the prompt in its
   # entirety.
